@@ -1,3 +1,5 @@
-import { handle as authHandle } from '$lib/server/auth';
+import { sequence } from '@sveltejs/kit/hooks';
+import { authHandle, protectHandle } from '$lib/server/auth';
 
-export const handle = authHandle;
+// Combine auth and route protection using sequence
+export const handle = sequence(authHandle.handle, protectHandle);

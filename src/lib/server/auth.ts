@@ -2,23 +2,48 @@ import { SvelteKitAuth } from '@auth/sveltekit';
 import { DrizzleAdapter } from '@auth/drizzle-adapter';
 import { db } from '$lib/server/db';
 import { users } from '$lib/server/db/schema';
+
+// Define Auth.js compatible table names for the adapter
+const authTables = {
+  users: 'user',
+  accounts: 'account', 
+  sessions: 'session',
+  verificationTokens: 'verification_token'
+};
 import { eq } from 'drizzle-orm';
 import { redirect, type Handle } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import Credentials from '@auth/core/providers/credentials';
+import Google from '@auth/core/providers/google';
+import GitHub from '@auth/core/providers/github';
 import bcrypt from 'bcrypt';
 import type { Provider } from '@auth/core/providers';
+import { 
+  AUTH_SECRET, 
+  GOOGLE_CLIENT_ID, 
+  GOOGLE_CLIENT_SECRET, 
+  GITHUB_CLIENT_ID, 
+  GITHUB_CLIENT_SECRET 
+} from '$env/static/private';
 
 // Auth.js configuration
 export const authHandle = SvelteKitAuth({
-  adapter: DrizzleAdapter(db) as any,
-  secret: process.env.AUTH_SECRET || 'your-secret-here',
+  adapter: DrizzleAdapter(db),
+  secret: AUTH_SECRET,
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  debug: process.env.NODE_ENV === 'development',
+  debug: true,
   providers: [
+    Google({
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+    }),
+    GitHub({
+      clientId: GITHUB_CLIENT_ID,
+      clientSecret: GITHUB_CLIENT_SECRET,
+    }),
     Credentials({
       name: 'credentials',
       credentials: {
@@ -56,13 +81,27 @@ export const authHandle = SvelteKitAuth({
       }
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
       }
       return token;
-    }
+    },
+    async signIn({ user, account, profile }) {
+      console.log('🔍 SignIn callback:', { user: user.email, provider: account?.provider });
+      
+      // For OAuth providers, set default role for new users
+      if (account?.provider === 'google' || account?.provider === 'github') {
+        console.log('✅ OAuth user signing in, adapter will handle user creation');
+        // Set default role for new users - this will be used by the adapter
+        if (!user.role) {
+          user.role = 'client';
+        }
+      }
+      
+      return true;
+    },
   },
   pages: {
     signIn: '/login',
@@ -120,5 +159,4 @@ export const protectHandle = (async ({ event, resolve }) => {
   return resolve(event);
 }) satisfies Handle;
 
-// Combine the auth and protect handles
-export const handle = authHandle.handle as Handle;
+// Combined handle export - this will be imported in hooks.server.ts
