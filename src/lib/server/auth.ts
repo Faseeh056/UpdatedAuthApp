@@ -1,15 +1,8 @@
 import { SvelteKitAuth } from '@auth/sveltekit';
 import { DrizzleAdapter } from '@auth/drizzle-adapter';
 import { db } from '$lib/server/db';
-import { users } from '$lib/server/db/schema';
+import { users, accounts, sessions, verificationTokens } from '$lib/server/db/schema';
 
-// Define Auth.js compatible table names for the adapter
-const authTables = {
-  users: 'user',
-  accounts: 'account', 
-  sessions: 'session',
-  verificationTokens: 'verification_token'
-};
 import { eq } from 'drizzle-orm';
 import { redirect, type Handle } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
@@ -26,19 +19,51 @@ import {
   GITHUB_CLIENT_SECRET 
 } from '$env/static/private';
 
-// Auth.js configuration
+// Validate environment variables
+function validateEnvVars() {
+  const required = {
+    AUTH_SECRET,
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET
+  };
+
+  const missing = Object.entries(required)
+    .filter(([key, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    console.error('❌ Missing required environment variables:', missing);
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+
+  console.log('✅ All required environment variables are present');
+}
+
+// Validate environment variables before creating auth config
+validateEnvVars();
+
+// Auth.js configuration with unified user management
 export const authHandle = SvelteKitAuth({
   adapter: DrizzleAdapter(db),
   secret: AUTH_SECRET,
   session: {
-    strategy: 'jwt',
+    strategy: 'database',
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  debug: true,
+  debug: process.env.NODE_ENV === 'development',
   providers: [
     Google({
       clientId: GOOGLE_CLIENT_ID,
       clientSecret: GOOGLE_CLIENT_SECRET,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code"
+        }
+      }
     }),
     GitHub({
       clientId: GITHUB_CLIENT_ID,
@@ -51,56 +76,96 @@ export const authHandle = SvelteKitAuth({
         password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        try {
+          if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await db.query.users.findFirst({
-          where: (users) => eq(users.email, credentials.email as string)
-        });
+          const user = await db.query.users.findFirst({
+            where: (users) => eq(users.email, credentials.email as string)
+          });
 
-        if (!user || !user.password) return null;
+          if (!user || !user.password) return null;
 
-        const passwordMatch = await bcrypt.compare(credentials.password as string, user.password);
+          const passwordMatch = await bcrypt.compare(credentials.password as string, user.password);
 
-        if (!passwordMatch) return null;
+          if (!passwordMatch) return null;
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-          role: user.role
-        };
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image,
+            role: user.role
+          };
+        } catch (error) {
+          console.error('❌ Error in credentials authorize:', error);
+          return null;
+        }
       }
     }) as Provider,
   ],
   callbacks: {
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
+    async session({ session, user }) {
+      try {
+        if (session.user && user) {
+          session.user.id = user.id;
+          session.user.role = user.role;
+        }
+        return session;
+      } catch (error) {
+        console.error('❌ Error in session callback:', error);
+        return session;
       }
-      return session;
-    },
-    async jwt({ token, user, account }) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-      }
-      return token;
     },
     async signIn({ user, account, profile }) {
-      console.log('🔍 SignIn callback:', { user: user.email, provider: account?.provider });
-      
-      // For OAuth providers, set default role for new users
-      if (account?.provider === 'google' || account?.provider === 'github') {
-        console.log('✅ OAuth user signing in, adapter will handle user creation');
-        // Set default role for new users - this will be used by the adapter
-        if (!user.role) {
-          user.role = 'client';
+      try {
+        // For OAuth providers, ensure proper user setup
+        if (account?.provider === 'google' || account?.provider === 'github') {
+          console.log('✅ OAuth user signing in, provider:', account.provider);
+          
+          // Set default role for new users if not already set
+          if (!user.role) {
+            user.role = 'client';
+          }
+          
+          // Ensure user has required fields
+          if (!user.name && profile?.name) {
+            user.name = profile.name;
+          }
+          
+          if (!user.email && profile?.email) {
+            user.email = profile.email;
+          }
         }
+        
+        return true;
+      } catch (error) {
+        console.error('❌ Error in signIn callback:', error);
+        return false;
+      }
+    },
+    async redirect({ url, baseUrl }) {
+      // Handle OAuth callback URLs - redirect to dashboard after successful auth
+      if (url.includes('/auth/callback/')) {
+        return `${baseUrl}/dashboard`;
       }
       
-      return true;
+      // Handle error URLs - redirect to login with error
+      if (url.includes('error=')) {
+        return `${baseUrl}/login?error=oauth_failed`;
+      }
+      
+      // If the URL is relative, make it absolute
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`;
+      }
+      
+      // If the URL is on the same origin, allow it
+      if (new URL(url).origin === baseUrl) {
+        return url;
+      }
+      
+      // Default redirect to dashboard
+      return `${baseUrl}/dashboard`;
     },
   },
   pages: {
@@ -108,6 +173,14 @@ export const authHandle = SvelteKitAuth({
     error: '/login',
   },
 });
+
+// Log OAuth configuration for debugging
+console.log('🔧 OAuth Configuration:');
+console.log('  - Google Client ID:', GOOGLE_CLIENT_ID ? '✅ Set' : '❌ Missing');
+console.log('  - Google Client Secret:', GOOGLE_CLIENT_SECRET ? '✅ Set' : '❌ Missing');
+console.log('  - GitHub Client ID:', GITHUB_CLIENT_ID ? '✅ Set' : '❌ Missing');
+console.log('  - GitHub Client Secret:', GITHUB_CLIENT_SECRET ? '✅ Set' : '❌ Missing');
+console.log('  - Auth Secret:', AUTH_SECRET ? '✅ Set' : '❌ Missing');
 
 // Protect routes that require authentication
 export const protectHandle = (async ({ event, resolve }) => {
@@ -135,7 +208,7 @@ export const protectHandle = (async ({ event, resolve }) => {
     '/verify-email',
   ];
 
-  const session = await event.locals.getSession();
+  const session = await event.locals.auth();
   const path = event.url.pathname;
 
   // Skip protection for public routes
