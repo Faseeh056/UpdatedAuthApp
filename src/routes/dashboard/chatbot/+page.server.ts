@@ -14,11 +14,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     throw redirect(303, '/admin/dashboard');
   }
 
-  // Redirect client users to chatbot by default
-  if (session.user.role === 'user' || session.user.role === 'client') {
-    throw redirect(303, '/dashboard/chatbot');
-  }
-
   return {
     session
   };

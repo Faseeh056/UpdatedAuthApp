@@ -3,9 +3,31 @@
   import Button from '$lib/components/ui/Button.svelte';
   import { goto } from '$app/navigation';
   import { signOut } from '@auth/sveltekit/client';
+  import { onMount } from 'svelte';
 
   let { data } = $props();
   let { session } = data;
+
+  let chatStats = {
+    totalSessions: 0,
+    totalMessages: 0,
+    lastActivity: null
+  };
+  let loadingStats = true;
+
+  onMount(async () => {
+    try {
+      const response = await fetch('/api/chat/stats');
+      if (response.ok) {
+        const data = await response.json();
+        chatStats = data.stats;
+      }
+    } catch (error) {
+      console.error('Failed to load chat stats:', error);
+    } finally {
+      loadingStats = false;
+    }
+  });
 
   function handleProfileClick() {
     goto('/profile');
@@ -13,6 +35,11 @@
 
   async function handleSignOut() {
     await signOut({ callbackUrl: '/' });
+  }
+
+  function formatDate(date: Date | null): string {
+    if (!date) return 'Never';
+    return new Date(date).toLocaleDateString();
   }
 </script>
 
@@ -147,6 +174,17 @@
             </div>
             <div class="space-y-6">
               <Button 
+                onClick={() => goto('/dashboard/chatbot')}
+                variant="outline" 
+                fullWidth
+                class="bg-blue-50 text-blue-700 border-blue-400 hover:bg-blue-100 font-semibold text-lg py-4 rounded-2xl transition-all duration-300 hover:scale-105 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 border-2"
+              >
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                AI Chatbot
+              </Button>
+              <Button 
                 onClick={handleProfileClick}
                 variant="outline" 
                 fullWidth
@@ -174,27 +212,50 @@
           </div>
         </div>
 
-        <!-- Enhanced Recent Activity Card -->
+        <!-- Enhanced Chat Statistics Card -->
         <div class="relative group">
           <div class="absolute inset-0 bg-gray-50 rounded-3xl transform rotate-1 group-hover:rotate-0 transition-transform duration-700 shadow-2xl"></div>
           <div class="relative bg-gray-50 rounded-3xl p-10 shadow-2xl border border-gray-200 backdrop-blur-sm group-hover:shadow-3xl transition-all duration-500">
             <div class="flex items-center mb-8">
               <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mr-6 shadow-lg group-hover:scale-110 transition-transform duration-500">
                 <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 class="text-2xl font-bold text-gray-900">Recent Activity</h3>
+              <h3 class="text-2xl font-bold text-gray-900">Chat Statistics</h3>
             </div>
-            <div class="text-center py-12">
-              <div class="w-20 h-20 bg-blue-100 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-500">
-                <svg class="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+            {#if loadingStats}
+              <div class="text-center py-12">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-gray-600">Loading statistics...</p>
               </div>
-              <p class="text-gray-600 text-lg font-medium mb-2">No recent activity to display.</p>
-              <p class="text-gray-500 text-sm">Your activity will appear here</p>
-            </div>
+            {:else}
+              <div class="space-y-6">
+                <div class="flex justify-between items-center py-4 border-b border-gray-200">
+                  <span class="text-gray-600 font-medium text-lg">Total Chats:</span>
+                  <span class="text-gray-900 font-semibold text-lg">{chatStats.totalSessions}</span>
+                </div>
+                <div class="flex justify-between items-center py-4 border-b border-gray-200">
+                  <span class="text-gray-600 font-medium text-lg">Total Messages:</span>
+                  <span class="text-gray-900 font-semibold text-lg">{chatStats.totalMessages}</span>
+                </div>
+                <div class="flex justify-between items-center py-4">
+                  <span class="text-gray-600 font-medium text-lg">Last Activity:</span>
+                  <span class="text-gray-900 font-semibold text-lg">{formatDate(chatStats.lastActivity)}</span>
+                </div>
+                <Button 
+                  onClick={() => goto('/dashboard/chatbot')}
+                  variant="outline" 
+                  fullWidth
+                  class="bg-blue-50 text-blue-700 border-blue-400 hover:bg-blue-100 font-semibold text-lg py-3 rounded-2xl transition-all duration-300 hover:scale-105 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 border-2 mt-6"
+                >
+                  <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Start New Chat
+                </Button>
+              </div>
+            {/if}
           </div>
         </div>
       </div>

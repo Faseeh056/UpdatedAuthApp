@@ -30,3 +30,30 @@ export const verificationTokens = pgTable('verification_token', {
 }, (vt) => ({
     compoundKey: index('verification_token_compound_key').on(vt.identifier, vt.token),
 }));
+
+// Chat history tables
+export const chatSessions = pgTable('chat_sessions', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    title: varchar('title', { length: 255 }).default('New Chat'),
+    createdAt: timestamp('created_at', { mode: 'date' }).defaultNow(),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        userIdIdx: index('chat_sessions_user_id_idx').on(table.userId),
+        createdAtIdx: index('chat_sessions_created_at_idx').on(table.createdAt),
+    }
+});
+
+export const chatMessages = pgTable('chat_messages', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+    role: varchar('role', { length: 32 }).notNull(), // 'user' or 'assistant'
+    content: text('content').notNull(),
+    timestamp: timestamp('timestamp', { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        sessionIdIdx: index('chat_messages_session_id_idx').on(table.sessionId),
+        timestampIdx: index('chat_messages_timestamp_idx').on(table.timestamp),
+    }
+});
