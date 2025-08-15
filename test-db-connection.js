@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
+import { sql } from 'drizzle-orm';
 
 // Load environment variables
 dotenv.config();
@@ -20,7 +21,6 @@ console.log('Database config:', {
   host: dbConfig.host,
   port: dbConfig.port,
   user: dbConfig.user,
-  database: dbConfig.database
 });
 
 // Create PostgreSQL connection pool
@@ -34,56 +34,56 @@ async function testConnection() {
     // Test basic connection
     const client = await pool.connect();
     console.log('✅ Database connection successful!');
+    client.release();
+
+    // Check if user table exists (renamed from users to match Auth.js)
+    const userTableExists = await db.execute(sql`SELECT EXISTS (
+      SELECT FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name = 'user'
+    )`);
     
-    // Check if users table exists
-    const tableCheck = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'users'
-      );
+    if (userTableExists.rows[0].exists) {
+      console.log('✅ User table exists!');
+      
+      // Get user count
+      const userCount = await db.execute(sql`SELECT COUNT(*) as count FROM "user"`);
+      const count = parseInt(userCount.rows[0].count);
+      console.log(`📊 Total users in database: ${count}`);
+      
+      if (count > 0) {
+        // Get user details
+        const users = await db.execute(sql`
+          SELECT name, email, role, "adminApproved", "createdAt" 
+          FROM "user" 
+          ORDER BY "createdAt" DESC
+        `);
+        
+        console.log('\n👥 Users in database:');
+        users.rows.forEach((user, index) => {
+          const createdDate = new Date(user.createdAt);
+          console.log(`${index + 1}. ${user.name || 'No name'} (${user.email}) - Role: ${user.role} - Approved: ${user.adminApproved} - Created: ${createdDate.toDateString()}`);
+        });
+      }
+    } else {
+      console.log('❌ User table does not exist!');
+    }
+
+    // List all available tables
+    const tables = await db.execute(sql`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      ORDER BY table_name
     `);
     
-    if (tableCheck.rows[0].exists) {
-      console.log('✅ Users table exists!');
-      
-      // Count users
-      const userCount = await client.query('SELECT COUNT(*) FROM users');
-      console.log(`📊 Total users in database: ${userCount.rows[0].count}`);
-      
-      // Show all users
-      const allUsers = await client.query('SELECT id, name, email, role, admin_approved, created_at FROM users ORDER BY created_at DESC');
-      
-      if (allUsers.rows.length > 0) {
-        console.log('\n👥 Users in database:');
-        allUsers.rows.forEach((user, index) => {
-          console.log(`${index + 1}. ${user.name || 'No name'} (${user.email}) - Role: ${user.role} - Approved: ${user.admin_approved} - Created: ${user.created_at}`);
-        });
-      } else {
-        console.log('📭 No users found in the database');
-      }
-      
-      // Check other tables
-      const tables = await client.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        ORDER BY table_name;
-      `);
-      
-      console.log('\n📋 Available tables:');
-      tables.rows.forEach(row => {
-        console.log(`  - ${row.table_name}`);
-      });
-      
-    } else {
-      console.log('❌ Users table does not exist!');
-    }
-    
-    client.release();
-    
+    console.log('\n📋 Available tables:');
+    tables.rows.forEach(table => {
+      console.log(`  - ${table.table_name}`);
+    });
+
   } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
+    console.error('❌ Database connection failed:', error);
   } finally {
     await pool.end();
   }
