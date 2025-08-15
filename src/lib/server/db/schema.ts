@@ -1,30 +1,33 @@
-import { pgTable, varchar, uuid, timestamp, boolean, text, index } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, uuid, timestamp, boolean, text, index, integer } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-export const users = pgTable('users', {
+// Main users table - Auth.js expects this exact name 'user'
+export const users = pgTable('user', {
     id: uuid('id').primaryKey().defaultRandom(),
     name: varchar('name', { length: 255 }),
     email: varchar('email', { length: 255 }).notNull().unique(),
-    emailVerified: timestamp('email_verified', { mode: 'date' }),
+    emailVerified: timestamp('emailVerified', { mode: 'date' }),
     password: varchar('password', { length: 255 }),
-    role: varchar('role', { length: 32 }).notNull().default('user'),
-    adminApproved: boolean('admin_approved').default(false),
+    role: varchar('role', { length: 32 }).notNull().default('client'),
+    adminApproved: boolean('adminApproved').default(false),
     image: varchar('image', { length: 255 }),
-    createdAt: timestamp('created_at', { mode: 'date' }).defaultNow(),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow(),
+    createdAt: timestamp('createdAt', { mode: 'date' }).defaultNow(),
+    updatedAt: timestamp('updatedAt', { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
         emailIdx: index('email_idx').on(table.email),
     }
 });
 
+// Auth.js session table - must match exactly
 export const sessions = pgTable('session', {
     sessionToken: varchar('sessionToken', { length: 255 }).primaryKey(),
     userId: uuid('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
     expires: timestamp('expires', { mode: 'date' }).notNull(),
 });
 
-export const verificationTokens = pgTable('verification_token', {
+// Auth.js verification token table
+export const verificationTokens = pgTable('verificationToken', {
     identifier: varchar('identifier', { length: 255 }).notNull(),
     token: varchar('token', { length: 255 }).notNull().unique(),
     expires: timestamp('expires', { mode: 'date' }).notNull(),
@@ -40,7 +43,7 @@ export const accounts = pgTable('account', {
     providerAccountId: varchar('providerAccountId', { length: 255 }).notNull(),
     refresh_token: text('refresh_token'),
     access_token: text('access_token'),
-    expires_at: timestamp('expires_at', { mode: 'date' }),
+    expires_at: integer('expires_at'), // Auth.js expects integer timestamp
     token_type: varchar('token_type', { length: 255 }),
     scope: varchar('scope', { length: 255 }),
     id_token: text('id_token'),
@@ -73,7 +76,7 @@ export const chatMessages = pgTable('chat_messages', {
 }, (table) => {
     return {
         sessionIdIdx: index('chat_messages_session_id_idx').on(table.sessionId),
-        timestampIdx: index('chat_messages_timestamp_idx').on(table.timestamp),
+        timestampIdx: index('chat_messages_timestamp_idx').on(table.sessionId),
     }
 });
 
