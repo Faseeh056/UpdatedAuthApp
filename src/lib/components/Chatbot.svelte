@@ -18,16 +18,55 @@
   let isLoading = false;
   let error = '';
 
-  // Initialize with welcome message
-  onMount(() => {
-    messages = [
-      {
-        id: '1',
-        role: 'assistant',
-        content: `Hello ${session?.user?.name || 'there'}! I'm your AI assistant. Ask me anything!`,
-        timestamp: new Date()
+  // Initialize with welcome message and load chat history
+  onMount(async () => {
+    try {
+      // Load chat history from the server
+      const response = await fetch('/api/chat/history');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.messages && data.messages.length > 0) {
+          // Convert database messages to chat format
+          messages = data.messages.map((msg: any) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date(msg.timestamp)
+          }));
+        } else {
+          // No history, show welcome message
+          messages = [
+            {
+              id: '1',
+              role: 'assistant',
+              content: `Hello ${session?.user?.name || 'there'}! I'm your AI assistant. Ask me anything!`,
+              timestamp: new Date()
+            }
+          ];
+        }
+      } else {
+        // Fallback to welcome message
+        messages = [
+          {
+            id: '1',
+            role: 'assistant',
+            content: `Hello ${session?.user?.name || 'there'}! I'm your AI assistant. Ask me anything!`,
+            timestamp: new Date()
+          }
+        ];
       }
-    ];
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+      // Fallback to welcome message
+      messages = [
+        {
+          id: '1',
+          role: 'assistant',
+          content: `Hello ${session?.user?.name || 'there'}! I'm your AI assistant. Ask me anything!`,
+          timestamp: new Date()
+        }
+      ];
+    }
   });
 
   async function sendMessage() {
@@ -200,32 +239,37 @@
         <div class="flex {message.role === 'user' ? 'justify-end' : 'justify-start'}">
           <div class="max-w-xs lg:max-w-md xl:max-w-lg">
             <div class="flex items-end space-x-2 {message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}">
-              <!-- Avatar -->
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0
-                {message.role === 'user' 
-                  ? 'bg-blue-600' 
-                  : 'bg-gray-600'
-                }">
-                {message.role === 'user' ? 'U' : 'AI'}
-              </div>
+                             <!-- Avatar -->
+               <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0
+                 {message.role === 'user' 
+                   ? 'bg-blue-600' 
+                   : 'bg-gray-600'
+                 }">
+                 {message.role === 'user' ? (message.userName ? message.userName.charAt(0).toUpperCase() : 'U') : 'AI'}
+               </div>
               
-              <!-- Message Bubble -->
-              <div class="px-4 py-3 rounded-2xl shadow-lg
-                {message.role === 'user' 
-                  ? 'bg-blue-600 text-white rounded-br-md' 
-                  : 'bg-gray-100 text-gray-900 rounded-bl-md'
-                }">
-                <p class="text-sm leading-relaxed streaming-text">
-                  {message.content}
-                  {#if message.role === 'assistant' && isLoading}
-                    <span class="inline-block w-2 h-4 bg-blue-500 typing-cursor ml-1"></span>
-                  {/if}
-                </p>
-                <p class="text-xs mt-2 opacity-70
-                  {message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}">
-                  {formatTime(message.timestamp)}
-                </p>
-              </div>
+                             <!-- Message Bubble -->
+               <div class="px-4 py-3 rounded-2xl shadow-lg
+                 {message.role === 'user' 
+                   ? 'bg-blue-600 text-white rounded-br-md' 
+                   : 'bg-gray-100 text-gray-900 rounded-bl-md'
+                 }">
+                 {#if message.role === 'user' && message.userName}
+                   <p class="text-xs opacity-80 mb-1 font-medium">
+                     {message.userName}
+                   </p>
+                 {/if}
+                 <p class="text-sm leading-relaxed streaming-text">
+                   {message.content}
+                   {#if message.role === 'assistant' && isLoading}
+                     <span class="inline-block w-2 h-4 bg-blue-500 typing-cursor ml-1"></span>
+                   {/if}
+                 </p>
+                 <p class="text-xs mt-2 opacity-70
+                   {message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}">
+                   {formatTime(message.timestamp)}
+                 </p>
+               </div>
             </div>
           </div>
         </div>

@@ -9,10 +9,10 @@ export default {
   dialect: 'postgresql',
   dbCredentials: {
     host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 5432,
-    user: process.env.DB_USER || 'Login',
-    password: process.env.DB_PASSWORD || 'faseeh565',
-    database: process.env.DB_NAME || 'auth_app_db',
-    ssl: false, // ✅ Add this line
+    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 5433,
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'password',
+    database: process.env.DB_NAME || 'auth_chat_db',
+    ssl: false,
   },
 } satisfies Config;
